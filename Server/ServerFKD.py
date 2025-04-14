@@ -129,6 +129,7 @@ class ServerFKD(Server):
             idle_clients = self.Indentify_idelclients(epoch)
             self.Allocation_resource(idle_clients)
             # 返回每个用户在哪一层，或者每一层有哪些用户？
+            # c
             self.Tier_clients(epoch, idle_clients)
             for client in idle_clients:
                 # 选择相关用户
