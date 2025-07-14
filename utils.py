@@ -11,12 +11,13 @@ def Accuracy(y,y_predict):
     return (leng-miss)/leng
 
 
-def soft_predict(Z,temp):
-    m,n = Z.shape
-    Q = torch.zeros(m,n)
-    Z_sum = torch.sum(torch.exp(Z/temp),dim=1)
-    for i in range(n):
-        Q[:,i] = torch.exp(Z[:,i]/temp)/Z_sum
+def soft_predict(Z, temp):
+    m, n = Z.shape
+    Q = torch.zeros(m, n)
+    Z_max = torch.max(Z / temp, dim=1, keepdim=True).values  # Stabilize by subtracting max
+    Z_exp = torch.exp((Z / temp) - Z_max)
+    Z_sum = torch.sum(Z_exp, dim=1, keepdim=True)
+    Q = Z_exp / Z_sum
     return Q
 
 def FedAvg(w):

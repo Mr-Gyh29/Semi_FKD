@@ -11,13 +11,14 @@ from models import CNNFemnist,ResNet18,ShuffLeNet
 from sampling import LocalDataset, LocalDataloaders, partition_data
 from option import args_parser
 from Server.ServerFKD import ServerFKD
+import torchvision
 
 
 
 print(torch.__version__)
 torch.cuda.is_available()
 np.set_printoptions(threshold=np.inf)
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(device.type)
 
 args = args_parser()
@@ -42,6 +43,9 @@ train_dataset,testset, dict_users, dict_users_test = partition_data(n_users = ar
 Loaders_train = LocalDataloaders(train_dataset,dict_users,args.batch_size,ShuffleorNot = True,frac=args.part)
 Loaders_test = LocalDataloaders(testset,dict_users_test,args.batch_size,ShuffleorNot = True,frac=2*args.part)
 global_loader_test = torch.utils.data.DataLoader(testset, batch_size=args.batch_size,shuffle=True, num_workers=2)
+images, labels = next(iter(Loaders_train[0]))
+print('len(Loaders_train)', len(Loaders_train[0]))
+
 
 for idx in range(args.num_clients):
     counts = [0]*args.num_classes
@@ -64,7 +68,8 @@ if not os.path.exists(checkpoint_dir):
 with open(checkpoint_dir+'args.pkl', 'wb') as fp:
     pickle.dump(args, fp)
 print('Checkpoint dir:', checkpoint_dir)
-
+img_grid = torchvision.utils.make_grid(images)
+logger.add_image('images', img_grid)
 
 
 
@@ -82,7 +87,9 @@ if args.model == 'shufflenet':
    
 print('# model parameters:', sum(param.numel() for param in global_model.parameters()))
 # global_model = nn.DataParallel(global_model)
+# logger.add_graph(global_model, torch.randn(1, 3, 224, 224).to(device))
 global_model.to(device)
+
 
 
 
@@ -96,9 +103,9 @@ global_model.to(device)
 #     server = ServerFedMD(args,global_model,Loaders_train,Loaders_test,global_loader_test,testset,logger,device)
 # if args.alg == 'FedProto':    
 #     server = ServerFedProto(args,global_model,Loaders_train,Loaders_test,global_loader_test,logger,device)
-if args.alg == 'FKD':    
-    server = ServerFKD(args,global_model,Loaders_train,Loaders_test,global_loader_test,logger,device)
-
+if args.alg == 'FedKD':    
+    server = ServerFKD(args,global_model,Loaders_train,Loaders_test,global_loader_test,testset,logger, device)
+logger.close()
 
 server.Create_Clints()
 server.train()

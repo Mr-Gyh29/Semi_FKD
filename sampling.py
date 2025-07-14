@@ -75,6 +75,7 @@ def partition_data(n_users, alpha=0.5,rand_seed = 0, dataset = 'cifar10'):
             - net_dataidx_map_test (dict): A dictionary mapping user indices to their respective testing data indices.
         """
     if dataset == 'CIFAR10':  # Check if the dataset is CIFAR10
+        print("进入")
         K = 10  # Number of classes in CIFAR10
         data_dir = '../data/cifar10/'  # Directory to store CIFAR10 data
         apply_transform = transforms.Compose(  # Define the data transformation
@@ -82,6 +83,7 @@ def partition_data(n_users, alpha=0.5,rand_seed = 0, dataset = 'cifar10'):
              transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])  # Normalize the images
         train_dataset = datasets.CIFAR10(data_dir, train=True, download=True,  # Load CIFAR10 training dataset
                                        transform=apply_transform)  # Apply transformations
+        print("训练数据准备完毕")
         test_dataset = datasets.CIFAR10(data_dir, train=False, download=True,  # Load CIFAR10 test dataset
                                           transform=apply_transform)  # Apply transformations
         y_train = np.array(train_dataset.targets)  # Get training labels
