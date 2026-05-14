@@ -21,11 +21,12 @@ class Client(object):
     idxs: the index for data of this local model
     logger: log the loss and the process
     """
-    def __init__(self, args, model,Loader_train,loader_test,idx, logger, code_length, num_classes, device, h, loader_pub):
+    def __init__(self, args, model,Loader_train,loader_test,Loader_global_test, idx, logger, code_length, num_classes, device, h, loader_pub):
         self.args = args
         self.logger = logger
         self.trainloader = Loader_train
         self.testloader = loader_test
+        self.global_testloader = Loader_global_test
         self.idx = idx
         self.ce = nn.CrossEntropyLoss() 
         self.device = device 
@@ -53,24 +54,46 @@ class Client(object):
             print("NaN or Inf detected in Z!")
             print("Z:", Z)
             return
-        loss1 = self.ce(Z,y)
+        if self.args.loss_F == "CEKD":
+            # loss1 = self.ce(Z,y)
+            loss1 = F.cross_entropy(Z, y)
+        else:
+            y_onehot = F.one_hot(y, num_classes=self.args.num_classes).float()
+            loss1 = F.mse_loss(Z, y_onehot)
         return loss1
     
     def test_accuracy(self):
+        # for batch_idx, (X, y) in enumerate(self.testloader):
+        #     print("(X,y)", (X,y))
         self.model.eval()
         accuracy = 0
         cnt = 0
         for batch_idx, (X, y) in enumerate(self.testloader):
+            # print("有数据")
             X = X.to(self.device)
             y = y.to(self.device)
             _, p = self.model(X)
             y_pred = p.argmax(1)
             accuracy += Accuracy(y,y_pred)
             cnt += 1
+        #     print("cnt", cnt)
+        # print("client_id", self.idx)
+        # print("final_cut", cnt)
+        return accuracy/cnt
+    
+    def test_global_accuracy(self):
+        self.model.eval()
+        accuracy = 0
+        cnt = 0
+        for batch_idx, (X, y) in enumerate(self.global_testloader):
+            X = X.to(self.device)
+            y = y.to(self.device)
+            _,p = self.model(X)
+            y_pred = p.argmax(1)
+            accuracy += Accuracy(y,y_pred)
+            cnt += 1
         return accuracy/cnt
 
-    def compute_xi(self, s_k, idle_clients):
-        return 0
 
     # TBD
     def load_model(self, global_weights):
@@ -78,7 +101,7 @@ class Client(object):
 
     def compute_rate(self, ratio_B):
         rate = self.bandwidth * ratio_B * np.log2(1 + (self.transmit_power * np.abs(self.h)**2) / (self.sigma**2))
-        print("rate: ", rate)
+        # print("rate: ", rate)
         return rate
 
     def compute_latency(self, ratio_B, ratio_F):
@@ -106,10 +129,17 @@ class Client(object):
 
 
     def compute_latency_cvx(self, ratio_B, ratio_F):
-        rate = self.bandwidth * ratio_B * cp.log1p((self.transmit_power * np.abs(self.h)**2) / (self.sigma**2)) / cp.log(2)
+        # rate = self.bandwidth * ratio_B * cp.log1p((self.transmit_power * np.abs(self.h)**2) / (self.sigma**2)) / cp.log(2)
+        log_const = np.log1p((self.transmit_power * np.abs(self.h)**2) / (self.sigma**2)) / np.log(2)  # → 常数
+        rate = self.bandwidth * log_const * ratio_B
         transmit_latency = self.model_size * cp.inv_pos(rate)
-        distillation_latency = (self.data_size * self.Flops_persample) / (self.GPUFlops_percycle * self.clock_frequency[self.idx] * ratio_F)
+        distillation_latency = (self.data_size * self.Flops_persample) / (self.GPUFlops_percycle * self.clock_frequency[self.idx]) * cp.inv_pos(ratio_F)
         training_latency = transmit_latency + distillation_latency
+        # print("Client {}:".format(self.idx))
+        # print('ratio_B:', ratio_B.value)
+        # print('rate:', rate.value)
+        # print("transmit_latency: {}, distillation_latency: {}".format(transmit_latency.value, distillation_latency.value))
+        assert training_latency.is_dcp(), "Latency expression not DCP"
         return training_latency
     
     def compute_energy_cvx(self, ratio_B, ratio_F):
@@ -117,4 +147,7 @@ class Client(object):
         transmit_energy = self.transmit_power * latency
         distillation_energy = self.kappa * self.data_size * self.Flops_persample * cp.power(self.GPUFlops_percycle * self.clock_frequency[self.idx] * ratio_F, 2)
         training_energy  = transmit_energy + distillation_energy
+        # print("Client {}:".format(self.idx))
+        # print("transmit_energy: {}, distillation_energy: {}".format(transmit_energy, distillation_energy))
+        assert training_energy.is_dcp(), "Energy expression not DCP"
         return training_energy

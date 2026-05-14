@@ -4,6 +4,7 @@ import torch
 import copy
 from utils import Accuracy
 import numpy as np
+import matplotlib.pyplot as plt
 
 class Server(object):
     def __init__(self,args, global_model,Loaders_train, Loaders_local_test, Loader_global_test, logger, device):
@@ -18,18 +19,18 @@ class Server(object):
         self.variance = [np.random.uniform(0, 1) for _ in range(args.num_clients)]
         self.h = self.generate_channel_gain(args.num_clients, self.variance)
         
-    def global_test_accuracy(self):
-        self.global_model.eval()
-        accuracy = 0
-        cnt = 0
-        for batch_idx, (X, y) in enumerate(self.global_testloader):
-            X = X.to(self.device)
-            y = y.to(self.device)
-            _,p = self.global_model(X)
-            y_pred = p.argmax(1)
-            accuracy += Accuracy(y,y_pred)
-            cnt += 1
-        return accuracy/cnt
+    # def global_test_accuracy(self):
+    #     self.global_model.eval()
+    #     accuracy = 0
+    #     cnt = 0
+    #     for batch_idx, (X, y) in enumerate(self.global_testloader):
+    #         X = X.to(self.device)
+    #         y = y.to(self.device)
+    #         _,p = self.global_model(X)
+    #         y_pred = p.argmax(1)
+    #         accuracy += Accuracy(y,y_pred)
+    #         cnt += 1
+    #     return accuracy/cnt
     
     
     def Save_CheckPoint(self, save_path):
@@ -88,4 +89,40 @@ class Server(object):
                 tiered_clients[i+1] = clients[start:start + n]
                 start += n
             print(tier_method)
+        print("tiered_clients: ", tiered_clients)
         return tiered_clients
+    
+    def plot_figures(self, loss1_epoch, local_acc_epoch, global_acc_epoch):
+
+        epochs = list(range(1, self.args.num_epochs + 1))
+
+        plt.figure(figsize=(12, 4))
+
+        # 绘制Loss1曲线
+        plt.subplot(1, 3, 1)
+        plt.plot(epochs, loss1_epoch, label='Loss1')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss1')
+        plt.title('Loss1 vs Epoch')
+        plt.legend()
+
+        # 绘制Average Local Accuracy曲线
+        plt.subplot(1, 3, 2)
+        plt.plot(epochs, local_acc_epoch, label='Average Local Accuracy', color='orange')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
+        plt.title('Average Local Accuracy vs Epoch')
+        plt.legend()
+
+        # 绘制Average Global Accuracy曲线
+        plt.subplot(1, 3, 3)
+        plt.plot(epochs, global_acc_epoch, label='Average Global Accuracy', color='green')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
+        plt.title('Average Global Accuracy vs Epoch')
+        plt.legend()
+
+        plt.tight_layout()
+        plt.savefig("output_{}_{}_{}_{}_{}Tier_lam{}_non{}.png".format(self.args.method_Teacher, self.args.sample_method, self.args.loss_F, self.args.method_Bandwidth, self.args.num_tiers, self.args.lam, self.args.beta)) 
+        plt.show()
+        print("Figures plotted successfully.")

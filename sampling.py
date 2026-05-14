@@ -14,6 +14,8 @@ class LocalDataset(Dataset):
     def __init__(self, dataset, Dict):
         self.dataset = dataset
         self.idxs = [int(i) for i in Dict]
+        # print("#############################################self.idxs:")
+        # print(self.idxs)
 
     def __len__(self):
         return len(self.idxs)
@@ -36,6 +38,8 @@ def LocalDataloaders(dataset, dict_users, batch_size, ShuffleorNot = True, Batch
     for i in range(num_users):
         num_data = len(dict_users[i])
         frac_num_data = int(frac*num_data)
+        if frac_num_data < batch_size:
+            frac_num_data = num_data
         whole_range = range(num_data)
         frac_range = np.random.choice(whole_range, frac_num_data)
         frac_dict_users = [dict_users[i][j] for j in frac_range]
@@ -58,8 +62,9 @@ def LocalDataloaders(dataset, dict_users, batch_size, ShuffleorNot = True, Batch
 
 
 # 划分数据
-def partition_data(n_users, alpha=0.5,rand_seed = 0, dataset = 'cifar10'):
-    def partition_data(n_users, alpha=0.5, rand_seed=0, dataset='cifar10'):
+
+def partition_data(n_users, alpha=0.5,rand_seed = 0, dataset = 'cifar10', sample_method = 'Dirichlet'):
+    def partition_data(n_users, alpha=0.5, rand_seed=0, dataset='cifar10', sample_method = 'Dirichlet'):
         """
         Partitions the dataset into non-IID subsets for federated learning.
         Parameters:
@@ -114,6 +119,7 @@ def partition_data(n_users, alpha=0.5,rand_seed = 0, dataset = 'cifar10'):
                                       transform=apply_transform)
         y_train = np.array(train_dataset.targets)
         y_test = np.array(test_dataset.targets)
+
     if dataset == 'SVHN':
         K = 10
         data_dir = '../data/SVHN/'
@@ -126,6 +132,20 @@ def partition_data(n_users, alpha=0.5,rand_seed = 0, dataset = 'cifar10'):
                                       transform=apply_transform)
         y_train = np.array(train_dataset.labels) # Get training labels
         y_test = np.array(test_dataset.labels)
+    
+    if dataset == 'FMNIST':
+        K = 10
+        data_dir = '../data/FMNIST/'
+        # 定义了一个图像预处理流程，先把图片转为张量，再归一化到 [-1, 1]，常用于训练神经网络时标准化输入数据
+        apply_transform = transforms.Compose(
+            [transforms.ToTensor(),
+             transforms.Normalize((0.5,), (0.5,))])
+        train_dataset = datasets.FashionMNIST(data_dir, train=True, download=True,
+                                              transform=apply_transform)
+        test_dataset = datasets.FashionMNIST(data_dir, train=False, download=True,
+                                             transform=apply_transform)
+        y_train = np.array(train_dataset.targets)
+        y_test = np.array(test_dataset.targets)
         
     min_size = 0  # Initialize the minimum size of data assigned to any user
     N = len(train_dataset)  # Total number of training samples
@@ -134,24 +154,58 @@ def partition_data(n_users, alpha=0.5,rand_seed = 0, dataset = 'cifar10'):
     net_dataidx_map_test = {}  # Dictionary to store test data indices for each user
     np.random.seed(rand_seed)  # Set random seed for reproducibility
 
-    while min_size < 10:  # Ensure each user gets at least 10 samples
+    if sample_method == 'Dirichlet':
+        while min_size < 10:  # Ensure each user gets at least 10 samples
+            idx_batch = [[] for _ in range(n_users)]  # Initialize list to store training indices for each user
+            idx_batch_test = [[] for _ in range(n_users)]  # Initialize list to store test indices for each user
+            # 按照狄利克雷分布，将某类样本按分布分给用户
+            for k in range(K):  # Iterate over each class
+                idx_k = np.where(y_train == k)[0]  # Get all training indices for class k
+                idx_k_test = np.where(y_test == k)[0]  # Get all test indices for class k
+                np.random.shuffle(idx_k)  # Shuffle the training indices
+                proportions = np.random.dirichlet(np.repeat(alpha, n_users))  # Sample proportions for each user from a Dirichlet distribution
+                # Adjust proportions to ensure balance
+                proportions_train = np.array([p * (len(idx_j) < N / n_users) for p, idx_j in zip(proportions, idx_batch)])
+                proportions_test = np.array([p * (len(idx_j) < N_test / n_users) for p, idx_j in zip(proportions, idx_batch_test)])
+                proportions_train = proportions_train / proportions_train.sum()  # Normalize proportions for training data
+                proportions_test = proportions_test / proportions_test.sum()  # Normalize proportions for test data
+                proportions_train = (np.cumsum(proportions_train) * len(idx_k)).astype(int)[:-1]  # Compute cumulative sum for training data
+                proportions_test = (np.cumsum(proportions_test) * len(idx_k_test)).astype(int)[:-1]  # Compute cumulative sum for test data
+                idx_batch = [idx_j + idx.tolist() for idx_j, idx in zip(idx_batch, np.split(idx_k, proportions_train))]  # Split and assign training indices to users
+                idx_batch_test = [idx_j + idx.tolist() for idx_j, idx in zip(idx_batch_test, np.split(idx_k_test, proportions_test))]  # Split and assign test indices to users
+                min_size_train = min([len(idx_j) for idx_j in idx_batch])  # Update the minimum size of data assigned to any user
+                min_size_test = min([len(idx_j) for idx_j in idx_batch_test])
+                min_size = min(min_size_train, min_size_test)
+            print("idx_batch", [len(idx_batch[i]) for i in range(n_users)])
+            # print(idx_batch)
+            print("idx_batch_test", [len(idx_batch_test[i]) for i in range(n_users)])
+            # print(idx_batch_test)
+            print("min_size", min_size)
+        
+        
+    # 首先根据随机为某个用户选择某个类，然后对于每个分配的类，该类中的数据样本数量遵循来自训练数据集的均匀分布U∼(10,100)。此外，随机选择一半的数据样本用于训练，剩余的数据样本用于验证。
+    else:
         idx_batch = [[] for _ in range(n_users)]  # Initialize list to store training indices for each user
         idx_batch_test = [[] for _ in range(n_users)]  # Initialize list to store test indices for each user
-        for k in range(K):  # Iterate over each class
-            idx_k = np.where(y_train == k)[0]  # Get all training indices for class k
-            idx_k_test = np.where(y_test == k)[0]  # Get all test indices for class k
-            np.random.shuffle(idx_k)  # Shuffle the training indices
-            proportions = np.random.dirichlet(np.repeat(alpha, n_users))  # Sample proportions for each user from a Dirichlet distribution
-            # Adjust proportions to ensure balance
-            proportions_train = np.array([p * (len(idx_j) < N / n_users) for p, idx_j in zip(proportions, idx_batch)])
-            proportions_test = np.array([p * (len(idx_j) < N_test / n_users) for p, idx_j in zip(proportions, idx_batch_test)])
-            proportions_train = proportions_train / proportions_train.sum()  # Normalize proportions for training data
-            proportions_test = proportions_test / proportions_test.sum()  # Normalize proportions for test data
-            proportions_train = (np.cumsum(proportions_train) * len(idx_k)).astype(int)[:-1]  # Compute cumulative sum for training data
-            proportions_test = (np.cumsum(proportions_test) * len(idx_k_test)).astype(int)[:-1]  # Compute cumulative sum for test data
-            idx_batch = [idx_j + idx.tolist() for idx_j, idx in zip(idx_batch, np.split(idx_k, proportions_train))]  # Split and assign training indices to users
-            idx_batch_test = [idx_j + idx.tolist() for idx_j, idx in zip(idx_batch_test, np.split(idx_k_test, proportions_test))]  # Split and assign test indices to users
-            min_size = min([len(idx_j) for idx_j in idx_batch])  # Update the minimum size of data assigned to any user
+        for i_user in range(n_users):
+            user_class = np.random.choice(K)
+            class_indices = np.where(y_train == user_class)[0]
+            class_indices_test = np.where(y_test == user_class)[0]
+            # 从class_indices随机选择numsamples个样本
+            num_samples = np.random.randint(1000, 2000)
+            num_samples_test = np.random.randint(800, 1000)
+            if len(class_indices) < num_samples:
+                num_samples = len(class_indices)
+            if len(class_indices_test) < num_samples_test:
+                num_samples_test = len(class_indices_test)
+            selected_indices = np.random.choice(class_indices, num_samples, replace=False)
+            selected_indices_test = np.random.choice(class_indices_test, num_samples_test, replace=False)
+            idx_batch[i_user] = selected_indices.tolist()
+            idx_batch_test[i_user] = selected_indices_test.tolist()
+        print("idx_batch:", [len(idx_batch[i]) for i in range(n_users)])
+        # print(idx_batch)
+        print("idx_batch_test:", [len(idx_batch_test[i]) for i in range(n_users)])
+        # print(idx_batch_test)
 
     for j in range(n_users):  # Iterate over each user
         np.random.shuffle(idx_batch[j])  # Shuffle the training indices for user j

@@ -1,7 +1,7 @@
 # # import numpy as np
-# # import torch
+import torch
 # # import time
-# # import torch.nn.functional as F
+import torch.nn.functional as F
 # # # # a = {'a':[1, 2, 3]}
 # # # # b = [ ]
 # # # # b.extend(a['a'])
@@ -367,25 +367,185 @@ import time
 import cvxpy as cp
 import numpy as np
 from multiprocessing import Pool, cpu_count
+from sklearn.metrics.pairwise import cosine_similarity
 
-def solve_problem(seed):
-    np.random.seed(seed)
-    n = 10
-    A = np.random.randn(n, n)
-    b = np.random.randn(n)
+# def solve_problem(seed):
+#     np.random.seed(seed)
+#     n = 10
+#     A = np.random.randn(n, n)
+#     b = np.random.randn(n)
 
-    x = cp.Variable(n)
-    objective = cp.Minimize(cp.norm(A @ x - b))
-    constraints = [x >= 0]
-    problem = cp.Problem(objective, constraints)
-    problem.solve(solver=cp.SCS)  # 可以改用其他 solver
+#     x = cp.Variable(n)
+#     objective = cp.Minimize(cp.norm(A @ x - b))
+#     constraints = [x >= 0]
+#     problem = cp.Problem(objective, constraints)
+#     problem.solve(solver=cp.SCS)  # 可以改用其他 solver
 
-    return x.value
+#     return x.value
 
-if __name__ == '__main__':
-    num_workers = min(cpu_count(), 8)  # 限制最大核数
-    with Pool(num_workers) as pool:
-        results = pool.map(solve_problem, range(20))  # 并行执行20个问题
+# if __name__ == '__main__':
+#     num_workers = min(cpu_count(), 8)  # 限制最大核数
+#     with Pool(num_workers) as pool:
+#         results = pool.map(solve_problem, range(20))  # 并行执行20个问题
 
-    for i, res in enumerate(results):
-        print(f"Result {i}: {res[:3]}")
+#     for i, res in enumerate(results):
+#         print(f"Result {i}: {res[:3]}")
+
+
+
+
+#     # 规定每层有多少用户
+# clients_per_tier = np.random.multinomial(10, [1/1]*1)
+
+# assert sum(clients_per_tier) == 10, "每层用户数之和必须等于总用户数"
+
+# clients = list(range(10))
+# np.random.shuffle(clients)
+
+# tiered_clients = {}
+# start = 0
+# for i, n in enumerate(clients_per_tier):
+#     tiered_clients[i+1] = clients[start:start + n]
+#     start += n
+# print("tiered_clients: ", tiered_clients)
+
+# ac_clients = np.zeros(10, dtype=int)
+# print(ac_clients[1])
+
+
+# xi_k=[5.94334974e-08,8.96675653e-09,6.45701137e-06,1.12684534e-09,3.93356421e-10,1.85630665e-05,2.53299221e-05,2.70345746e-10,1.95412900e-07,5.53096009e-10]
+# xi_k_magnitude = np.min(np.abs(xi_k))
+# print(xi_k_magnitude)
+# if xi_k_magnitude > 0:
+#     coe = 10 ** (-int(np.floor(np.log10(xi_k_magnitude))))
+# else:
+#     coe = 1.0
+# print("coe:", coe)
+
+proportions = np.random.dirichlet(np.repeat(0.1, 10))
+print(proportions)
+print(np.repeat(0.1, 10))
+
+proportions_IID = np.random.dirichlet(np.repeat(9999, 10))
+print(proportions_IID)
+
+# print(np.sum(proportions))
+# print(np.sum(proportions_IID))
+
+# xi_k = [4.74143279e-04, 3.13180701e-07, 2.02767435e-04, 9.98506430e-01,
+#  1.37778961e-05, 6.92592215e-04, 1.23183624e-05, 9.13757908e-06,
+#  8.41226192e-05, 4.39707769e-06]
+# print(np.sum(xi_k))
+
+xi_k = [4.77954808e-09, 5.95156732e-07, 1.99812496e-06, 6.64020902e-03,
+    3.31533341e-05, 4.23279799e-09, 1.57278818e-10, 1.26067791e-17,
+    1.41676099e-07, 4.19138766e-04]
+
+# 转为numpy数组
+xi_k = np.array(xi_k)
+max_val = np.max(xi_k)
+max_exp = np.floor(np.log10(max_val))
+print("max_exp:", max_exp)
+# 允许的最小指数级
+min_exp = max_exp - 6
+# 找出指数级低于min_exp的元素，设为0
+mask = np.log10(xi_k, where=xi_k>0) < min_exp
+xi_k[mask] = 0
+print(xi_k)
+
+# xi_k = np.array(xi_k)  # Convert to NumPy array for boolean indexing
+# xi_k_mean = np.mean(np.abs(xi_k))
+
+# xi_k_std = np.std(xi_k)
+# print("xi_k_mean:", xi_k_mean)
+# print("xi_k_std:", xi_k_std)
+# print("threshold:", xi_k_mean - 3 * xi_k_std)
+# # 定义离群点阈值（如小于均值-3*std）
+# outlier_mask = np.where(xi_k < (xi_k_mean - xi_k_std))
+# print("outlier_mask:", outlier_mask)
+# # 如果你想用整数索引而不是布尔索引，可以这样做：
+# # outlier_indices = np.where(outlier_mask)[0]
+# # print("outlier_indices:", outlier_indices)
+# xi_k[outlier_mask] = 0
+# print(xi_k)
+
+# 将每个用户的数据分布看作一个向量
+data_distributions = [
+    [83, 151, 4, 108, 0, 9, 0, 51, 298, 0],
+    [0, 0, 0, 0, 0, 7, 0, 0, 80, 425],
+    [0, 69, 16, 344, 0, 275, 0, 0, 0, 0],
+    [3, 21, 0, 0, 0, 0, 0, 0, 37, 3],
+    [10, 0, 0, 16, 118, 0, 38, 0, 69, 5],
+    [183, 41, 352, 0, 0, 0, 0, 0, 0, 0],
+    [0, 23, 0, 1, 248, 214, 0, 154, 0, 0],
+    [0, 122, 78, 0, 0, 0, 0, 55, 0, 1],
+    [48, 0, 2, 0, 96, 1, 429, 0, 0, 0],
+    [128, 0, 0, 0, 0, 0, 10, 195, 0, 51]
+]
+
+
+data_distributions = np.array(data_distributions)
+
+# 计算相关性矩阵（皮尔逊相关系数）
+correlation_matrix = np.corrcoef(data_distributions)
+print("相关性矩阵（皮尔逊相关系数）：")
+print(np.round(correlation_matrix, 2))
+
+# 也可以计算余弦相似度
+cos_sim_matrix = cosine_similarity(data_distributions)
+print("余弦相似度矩阵：")
+print(np.round(cos_sim_matrix, 2))
+
+a = [83, 151, 4, 108, 0, 9, 0, 51, 298, 0]
+b = [3, 21, 0, 0, 0, 0, 0, 0, 37, 3]
+
+similarity = cosine_similarity([a], [b])[0][0]
+print("余弦相似度a和b：", similarity)
+
+
+# proportions = np.random.dirichlet(np.repeat(alpha, n_users)) 
+
+import numpy as np
+
+
+def zipf_allocation(total_samples: int, num_users: int, eta: float, start_from=1):
+    """
+    Zipf-based unbalanced data amounts.
+    Args:
+        total_samples: D, 总样本数（整数）
+        num_users: U, 用户数
+        eta: η, Zipf 幂指数；η=0 => 平均分配
+        start_from: 用户编号起点（通常从1开始）
+    Returns:
+        alloc: 长度为 U 的整数数组，第 u 个元素为用户 (start_from+u-1) 的样本数
+        weights: 归一化权重（和为1），对应公式中的 u^{-eta}/sum_k k^{-eta}
+    """
+    u = np.arange(start_from, start_from + num_users, dtype=float)
+    weights_raw = u ** (-eta)           # u^{-eta}
+    weights = weights_raw / weights_raw.sum()
+
+    # 先按向下取整，再把余数按小数部分从大到小分配
+    real_alloc = total_samples * weights
+    alloc = np.floor(real_alloc).astype(int)
+    remainder = total_samples - alloc.sum()
+    if remainder > 0:
+        # 余数分给小数部分最大的用户
+        frac = real_alloc - alloc
+        top_idx = np.argsort(-frac)[:remainder]
+        alloc[top_idx] += 1
+
+    return alloc, weights
+
+# ---------- 示例 ----------
+if __name__ == "__main__":
+    D = 10000   # 总样本数
+    U = 10      # 用户数
+
+    for eta in [0.0, 0.5, 1.0, 2.0, 5.0]:
+        alloc, w = zipf_allocation(D, U, eta)
+        print(f"\neta = {eta:.1f}")
+        print("weights (sum=1):", np.round(w, 4))
+        print("allocation (sum={}):".format(alloc.sum()), alloc)
+        # 观感：eta 越大，用户1占比越高；eta→0 时近似均分；eta 很大时几乎全部给用户1
+
+    print(F.kl_div(torch.tensor([1,1,1]), torch.tensor([0, 0, 0])))
